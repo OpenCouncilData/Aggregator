@@ -1,0 +1,12 @@
+{
+    "cloudant": {
+        "url": "https://opencouncildata.cloudant.com",
+        "account": "opencouncildata",
+        "password": "VERY SECRET",
+        "database": "test1"
+    },
+    "mapbox": {
+        "account": "opencouncildata",
+        "accesstoken": "sk.eybiglongmapboxaccesstoken"
+    }
+}
