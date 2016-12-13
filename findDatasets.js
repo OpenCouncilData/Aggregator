@@ -1,3 +1,10 @@
+/*
+
+Out of memory? node --max-old-space-size=8192 findDatasets.js 
+
+
+ */
+
 //'use strict';
 var requestp = require('request-promise');
 var URI = require('urijs');
@@ -14,36 +21,48 @@ TODO
 - find out why tree generation failed
 - measure quality of datasets, provide rating out of 100
 - adjust maps to turn quality rating into color.
-- generate map styles in the browser, so Mapbox becomes a dumb host of tiles only (plus a basemap).
-- hence, add visualisation options like "recently updated", "number of attributes"
+- color code attributes based on "required", "optional", "non-standard"
+✓ generate map styles in the browser, so Mapbox becomes a dumb host of tiles only (plus a basemap).
+ ✓ style a basemap, then do Map.addLayer() with "data-polygons", "data-points", "data-lines" layer etc
+-- hence, add visualisation options like "recently updated", "number of attributes"
+-- how do we set the right kind of icons for the layer? Do we need to?
+
+- Add info about councils to browser, 
+-- so we can show council names, no portal URLs as ids.
+-- click on council name to jump to area
+
+
+- Alter pipeline to work in a "check for updates" mode. Poll each site to see if new/updated datasets?
+- Somehow deal with datasets like http://data.gov.au/geoserver/hsc-dog-walking-zones/wfs?request=GetFeature&typeName=ckan_f15a3a72_1367_4f2b_8428_416bcfc026a3&outputFormat=json 
+  which are actually empty.
 */
 
 
 var topics = {
     'dog-walking-zones': {
-        'searchTerm': 'dog walking zones',
-        'titleWhitelist': /dog/i,
-        'titleBlacklist': /bag/i
+        searchTerm: 'dog walking zones',
+        titleWhitelist: /dog/i,
+        titleBlacklist: /bag/i
     },
     'garbage-collection-zones': {
-        'searchTerm': 'garbage collection zones',
-        'titleBlacklist': /bins|stats|trucks|routes/i,
-        'titleWhitelist': /waste|garbage|recycling|rubbish/i
+        searchTerm: 'garbage collection zones',
+        titleBlacklist: /bins|stats|trucks|routes/i,
+        titleWhitelist: /waste|garbage|recycling|rubbish/i
     },
     'public-toilets': {
-        'searchTerm': 'public-toilets',
-        //'titleBlacklist': /bins|stats|trucks|routes/i,
-        'titleWhitelist': /toilet|amenities/i
+        searchTerm: 'public-toilets',
+        //titleBlacklist: /bins|stats|trucks|routes/i,
+        titleWhitelist: /toilet|amenities/i
     },
     'parking-zones': {
-        'searchTerm': 'parking',
-        'titleBlacklist': /parks|infringement|machine|dog/i,
-        'titleWhitelist': /parking/i
+        searchTerm: 'parking',
+        titleBlacklist: /parks|infringement|machine|dog/i,
+        titleWhitelist: /parking/i
     },
     'footpaths': {
-        'searchTerm': 'footpaths',
-        'titleBlacklist': /defect/i,
-        'titleWhitelist': /path/i
+        searchTerm: 'footpaths',
+        titleBlacklist: /defect/i,
+        titleWhitelist: /path/i
     },
     'customer-service-centres': {
         searchTerm: 'customer service centres',
@@ -62,10 +81,25 @@ var topics = {
         searchTerm: 'trees',
         titleWhitelist: /trees/i,
         titleBlacklist: /species|flora|catalogue|pits/i
+    },
+    'facilities': {
+        searchTerm: 'facilities',
+        titleBlacklist: /parks/i,
+        titleWhitelist: /facilities/i
+    },
+    'childcare-centres': {
+        searchTerm: 'childcare centres',
+        titleWhitelist: /child.?care/i
+    },
+    'venues-for-hire': {
+        searchTerm: 'title:venues OR title:halls',
+        titleWhitelist:/venue|hall/i
     }
 };
 
-var _resourceBlacklist = ['http://data.gov.au/dataset/42ddadff-d5c9-406c-9dc4-e5830a6dc837/resource/456ff78c-31f2-4ed9-9c06-e91c1d9bc915/download/gpspublictoilets.json'];
+var _resourceBlacklist = [
+'http://data.gov.au/dataset/42ddadff-d5c9-406c-9dc4-e5830a6dc837/resource/456ff78c-31f2-4ed9-9c06-e91c1d9bc915/download/gpspublictoilets.json',
+'http://data.gov.au/dataset/1b12dff9-b90a-4009-b507-7092d9d5f695/resource/3afa2b13-d905-49c2-8edd-1208e4d45875/download/gpshalls.json'];
 function resourceBlacklist(uri) {
     if (_resourceBlacklist.indexOf(uri) !== -1) {
         console.log('BLACKLIST '.red + uri);
@@ -90,7 +124,7 @@ const getJson = require('./jsonCache').getJsonViaCache;
 
 // Split a GeoJson file into features and upload them separately to CloudAnt, with ID like "http://data.gov.au/...geojson#4"
 function uploadFeatures(features, sourceUrl) {
-    return;
+    //return;
     if (features === undefined) // some broken GeoJson files?
         return;
 
@@ -152,6 +186,7 @@ function findGeoJsonResources(datasets, orgId, topickey) {
             // for simplicity we just want the first geojson. Sometimes there are more than one, usually because something has gone wrong.
             // sometimes the format is set as 'json'. blergh.
             resources.push(d.resources.filter(r => {
+                console.log (`??? ${r.url}`);
                 return !resourceBlacklist(r.url) && (r.format.match(/geojson/i) || r.format.match(/json/i) && r.url.match(/geoserver/));
             })[0]);
         }
@@ -247,7 +282,7 @@ var allPortals = getJson('https://opencouncildata.cloudant.com/councils/_design/
     //if (row.id !== 'https://data.gov.au/organization/horsham-rural-city-council') 
     //   return;
 
-    //if (!row.id.match(/melbourne/)) 
+    //if (!row.id.match(/hindmarsh/i)) 
     //    return; 
 
 
@@ -256,13 +291,13 @@ var allPortals = getJson('https://opencouncildata.cloudant.com/councils/_design/
     //    
     
     var topickeys = Object.keys(topics);
-    topickeys = ['trees'];
+    topickeys = ['venues-for-hire'];
     
     return Promise.map(topickeys, topickey => {
         if (portal.type === 'ckan') {
             return findCkanDatasets(portal.api, row.id, topics[topickey])
                 .then(datasets => findGeoJsonResources(datasets, row.id, topickey));
-        } else if (portal.type === 'socrata') {
+        } else if (portal.type === 'socrata' && !portal.api.match( /act\.gov\.au/)) {
             return findSocrataDatasets(portal.api, row.id, topickey);
         }
     });

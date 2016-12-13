@@ -34,12 +34,14 @@ exports.upsert = function(json, sourceurl) {
             json._rev = headers[1].etag.replace(/"/g, ''); // really weird, the revids are wrapped in double quotes.
             console.log('Upserting: ' + sourceurl);
             console.log(json._rev);
-        }).finally(() => {
+        }).catch((e) => {
+            // we just want to catch 404s (no existing document to replace), but we're ignoring all errors. TODO
+
             if (!json._rev) {
                 //console.warn('No existing document');
             }
 
-            // no current version? no problem.
+            
             json._id = sourceurl;
 
             return db.insert(json);
