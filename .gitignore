@@ -1,12 +1,11 @@
-
 cache/*.json
 /config.json
-
-# added by GitSavvy
 out-geojsons/*.geojson
-
-# added by GitSavvy
 /node_modules/
-
-# added by GitSavvy
 /cache.json
+
+/tippecanoe/
+
+/out-mbtiles/
+
+/tmp/
