@@ -74,7 +74,7 @@ const getJson = require('./jsonCache').getJsonViaCache;
 
 // Split a GeoJson file into features and upload them separately to CloudAnt, with ID like "http://data.gov.au/...geojson#4"
 function uploadFeatures(features, sourceUrl) {
-    //return;
+    return;
     if (features === undefined) // some broken GeoJson files?
         return;
 
