@@ -45,7 +45,11 @@ var topics = require('./topics');
 
 var _resourceBlacklist = [
 'http://data.gov.au/dataset/42ddadff-d5c9-406c-9dc4-e5830a6dc837/resource/456ff78c-31f2-4ed9-9c06-e91c1d9bc915/download/gpspublictoilets.json',
-'http://data.gov.au/dataset/1b12dff9-b90a-4009-b507-7092d9d5f695/resource/3afa2b13-d905-49c2-8edd-1208e4d45875/download/gpshalls.json'];
+'http://data.gov.au/dataset/1b12dff9-b90a-4009-b507-7092d9d5f695/resource/3afa2b13-d905-49c2-8edd-1208e4d45875/download/gpshalls.json', 
+'http://data.gov.au/dataset/06548285-28fd-4300-8121-996604d58dfd/resource/2fd627f0-a2a2-4664-9273-85e882288182/download/gpsplaygrounds.json',
+'http://data.gov.au/dataset/cdbff5d2-8a9c-4922-afd5-00be9379f76a/resource/840e49c5-7ed2-4a40-88b5-6faf3ee65f3a/download/gpsskateparks.json',
+'http://data.gov.au/dataset/758f8ffc-34e2-47b8-ac0a-e143412ddad4/resource/0070e881-13b2-4acb-8d97-f1a10d27af87/download/gpsovals.json',
+'http://data.gov.au/dataset/12bca8b6-95f0-4d17-bfbb-b7fd9f5637f7/resource/11b2042d-d93d-4702-8ee8-99d13fc4818e/download/gpsbikeparks.json'];
 function resourceBlacklist(uri) {
     if (_resourceBlacklist.indexOf(uri) !== -1) {
         console.log('BLACKLIST '.red + uri);
@@ -70,7 +74,7 @@ const getJson = require('./jsonCache').getJsonViaCache;
 
 // Split a GeoJson file into features and upload them separately to CloudAnt, with ID like "http://data.gov.au/...geojson#4"
 function uploadFeatures(features, sourceUrl) {
-    return;
+    //return;
     if (features === undefined) // some broken GeoJson files?
         return;
 
@@ -98,7 +102,8 @@ function reprojectGeoJson(geojson, sourceUrl) {
     if (sourceUrl === 'http://data.gov.au/geoserver/ysc-garbage-collection-zones/wfs?request=GetFeature&typeName=ckan_e7b72b97_8046_4d84_ab9f_874a549f907d&outputFormat=json' ||
         sourceUrl === 'http://data.gov.au/geoserver/wwsc-garbage-collection-zones/wfs?request=GetFeature&typeName=ckan_e77b6c07_39f2_454d_ae72_4976cab1dfb3&outputFormat=json' ||
         sourceUrl === 'http://data.gov.au/geoserver/hrcc-garbage-collection/wfs?request=GetFeature&typeName=ckan_55364505_b0f4_4006_8544_95c9ed8d11ad&outputFormat=json' ||
-        sourceUrl === 'http://data.gov.au/geoserver/hsc-garbage-collection-zones/wfs?request=GetFeature&typeName=ckan_4a51f8a2_90a9_4b52_8ef2_d7cecff14803&outputFormat=json'
+        sourceUrl === 'http://data.gov.au/geoserver/hsc-garbage-collection-zones/wfs?request=GetFeature&typeName=ckan_4a51f8a2_90a9_4b52_8ef2_d7cecff14803&outputFormat=json' ||
+        sourceUrl === 'http://data.gov.au/geoserver/ballarat-parking-machines/wfs?request=GetFeature&typeName=919da8f8_0aa6_4f90_9d21_45331e4bea7c&outputFormat=json'
         ) return geojson;
     try {
 
@@ -117,7 +122,7 @@ function checkCoords(coords, source, levels) {
     //console.log(coords);
     try {
         //if (coords[0] >= 180 || coords[0] <= -180 || coords[1] >= 90 || coords[1] <= -90) {
-        if (coords[0] >= 150 || coords[0] <= 90 || coords[1] >= -20 || coords[1] <= -45) {
+        if (coords[0] >= 160 || coords[0] <= 90 || coords[1] >= -5 || coords[1] <= -50) {
             console.log('Bad geometry '.red + source + ' ' + coords.join(',').grey);
             return false;
             //console.log(feature.geometry);
@@ -194,6 +199,7 @@ function findGeoJsonResources(datasets, orgId, topickey) {
 }
 
 function titleMatchesTopic(title, topic) {
+    //console.log(title);
     return !(topic.titleBlacklist && title.match(topic.titleBlacklist)) && 
            !(topic.titleWhitelist && !title.match(topic.titleWhitelist));
 }
@@ -215,7 +221,7 @@ function findSocrataDatasets(api, orgId, topickey) {
             return Promise.map(
                 results.filter(item => item.metadata.geo && item.childViews && item.newBackend && titleMatchesTopic(item.name, topics[topickey])),
                 item => {
-                    var url = api + '/resource/' + item.childViews[0] + '.geojson' + '?$limit=10000';
+                    var url = api + '/resource/' + item.childViews[0] + '.geojson' + '?$limit=50000';
                     //console.debug(orgId, topickey, url);
                     return getJson(url).then(gj => processGeoJson(gj, orgId, topickey, url));
                 }
@@ -267,33 +273,50 @@ function writeCombinedGeoJsons() {
     });
 }
 
-var allPortals = getJson('https://opencouncildata.cloudant.com/councils/_design/platforms/_view/all?reduce=false')
-    .then(result => Promise.map(result.rows, (row) => {
-    //console.log(row.id);
-    var portal = row.key;
+function processTopics(topickeys) {
+    return getJson('https://opencouncildata.cloudant.com/councils/_design/platforms/_view/all?reduce=false')
+        .then(result => Promise.map(result.rows, (row) => {
+        //console.log(row.id);
+        var portal = row.key;
 
-    //if (row.id !== 'https://data.gov.au/organization/horsham-rural-city-council') 
-    //   return;
+        //if (row.id !== 'https://data.gov.au/organization/horsham-rural-city-council') 
+        //   return;
 
-    //if (!row.id.match(/wyndham/i))  return; 
+        //if (!row.id.match(/melbourne/i))  return; 
 
 
-    //if (!row.id.match(/data\.gov\.au/)) 
-    //    return; 
-    //    
-    
-    var topickeys = Object.keys(topics);
-    topickeys = ['garbage-collection-zones'];
-    
-    return Promise.map(topickeys, topickey => {
-        if (portal.type === 'ckan') {
-            return findCkanDatasets(portal.api, row.id, topics[topickey])
-                .then(datasets => findGeoJsonResources(datasets, row.id, topickey));
-        } else if (portal.type === 'socrata' && !portal.api.match( /act\.gov\.au/)) {
-            return findSocrataDatasets(portal.api, row.id, topickey);
-        }
-    });
-})).then(writeCombinedGeoJsons);
+        //if (!row.id.match(/data\.gov\.au/)) 
+        //    return; 
+        //    
+        
+        
+        //topickeys = ['wards'];
+        
+        return Promise.map(topickeys, topickey => {
+            if (topics[topickey] === undefined) {
+                console.error('Unknown topic: ' + topickey);
+                return;
+            }
+            if (portal.type === 'ckan') {
+                return findCkanDatasets(portal.api, row.id, topics[topickey])
+                    .then(datasets => findGeoJsonResources(datasets, row.id, topickey));
+            } else if (portal.type === 'socrata' && !portal.api.match( /act\.gov\.au/)) {
+                return findSocrataDatasets(portal.api, row.id, topickey);
+            }
+        });
+    })).then(writeCombinedGeoJsons);
+}
+
+var options = require('command-line-args')([
+    { name: 'topics', type: String, multiple: true, defaultOption: true }
+]);
+
+if (!options.topics) {
+    // options.topics = Object.keys(topics);
+    options.topics = ['wards'];
+}
+
+processTopics(options.topics);
 
 
 //https://data.gov.au/api/3/action/package_search?fq=tags:(dogs)

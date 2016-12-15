@@ -32,16 +32,18 @@ module.exports = {
     },
     'drainpipes': {
         searchTerm: 'drains',
-        titleBlacklist: /basin|pit|catchment/g
+        titleWhitelist: /drain/i,
+        titleBlacklist: /basin|pit|catchment/i
     },
     'parks': {
-        searchTerm: 'parks',
-        titleBlacklist: /parking|carpark/
+        searchTerm: '+title:parks OR +title:"open space"',
+        titleWhitelist: /park|open space/i,
+        titleBlacklist: /parking|carpark|trees/i
     },
     'trees': {
         searchTerm: 'trees',
         titleWhitelist: /trees/i,
-        titleBlacklist: /species|flora|catalogue|pits/i
+        titleBlacklist: /species|flora|catalogue|pit/i
     },
     'facilities': {
         searchTerm: 'facilities',
