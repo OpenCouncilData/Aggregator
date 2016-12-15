@@ -35,67 +35,13 @@ TODO
 - Alter pipeline to work in a "check for updates" mode. Poll each site to see if new/updated datasets?
 - Somehow deal with datasets like http://data.gov.au/geoserver/hsc-dog-walking-zones/wfs?request=GetFeature&typeName=ckan_f15a3a72_1367_4f2b_8428_416bcfc026a3&outputFormat=json 
   which are actually empty.
+
+- Use TippeCanoe to generate tilesets before uploading.
+  rm out-mbtiles/*; tippecanoe/tippecanoe --maximum-zoom 15 --simplify-only-low-zooms -o out-mbtiles/parking-zones.mbtiles --name parking-zones --layer parking-zones out-geojsons/parking-zones.geojson
+
 */
 
-
-var topics = {
-    'dog-walking-zones': {
-        searchTerm: 'dog walking zones',
-        titleWhitelist: /dog/i,
-        titleBlacklist: /bag/i
-    },
-    'garbage-collection-zones': {
-        searchTerm: 'garbage collection zones',
-        titleBlacklist: /bins|stats|trucks|routes/i,
-        titleWhitelist: /waste|garbage|recycling|rubbish/i
-    },
-    'public-toilets': {
-        searchTerm: 'public-toilets',
-        //titleBlacklist: /bins|stats|trucks|routes/i,
-        titleWhitelist: /toilet|amenities/i
-    },
-    'parking-zones': {
-        searchTerm: 'parking',
-        titleBlacklist: /parks|infringement|machine|dog/i,
-        titleWhitelist: /parking/i
-    },
-    'footpaths': {
-        searchTerm: 'footpaths',
-        titleBlacklist: /defect/i,
-        titleWhitelist: /path/i
-    },
-    'customer-service-centres': {
-        searchTerm: 'customer service centres',
-        titleWhitelist: /customer service/i
-        //titleBlacklist: /
-    },
-    'drainpipes': {
-        searchTerm: 'drains',
-        titleBlacklist: /basin|pit|catchment/g
-    },
-    'parks': {
-        searchTerm: 'parks',
-        titleBlacklist: /parking|carpark/
-    },
-    'trees': {
-        searchTerm: 'trees',
-        titleWhitelist: /trees/i,
-        titleBlacklist: /species|flora|catalogue|pits/i
-    },
-    'facilities': {
-        searchTerm: 'facilities',
-        titleBlacklist: /parks/i,
-        titleWhitelist: /facilities/i
-    },
-    'childcare-centres': {
-        searchTerm: 'childcare centres',
-        titleWhitelist: /child.?care/i
-    },
-    'venues-for-hire': {
-        searchTerm: 'title:venues OR title:halls',
-        titleWhitelist:/venue|hall/i
-    }
-};
+var topics = require('./topics');
 
 var _resourceBlacklist = [
 'http://data.gov.au/dataset/42ddadff-d5c9-406c-9dc4-e5830a6dc837/resource/456ff78c-31f2-4ed9-9c06-e91c1d9bc915/download/gpspublictoilets.json',
@@ -124,12 +70,12 @@ const getJson = require('./jsonCache').getJsonViaCache;
 
 // Split a GeoJson file into features and upload them separately to CloudAnt, with ID like "http://data.gov.au/...geojson#4"
 function uploadFeatures(features, sourceUrl) {
-    //return;
+    return;
     if (features === undefined) // some broken GeoJson files?
         return;
 
     return Promise.map(features, (feature, index) => {
-        var id = sourceUrl + '#' + index;
+        var id = sourceUrl + '#' + index;  // TODO fix this. We're filtering out bad layers, so this messes with counting?
         return uploadCloudant.upsert(feature, id)
         .then(() => console.log('Uploaded ' + id))
         .catch(e => {
@@ -141,13 +87,59 @@ function uploadFeatures(features, sourceUrl) {
 }
 
 // Not all GeoJSON files are in the recommended WGS84/latlon/EPSG:4326 projection.
-function reprojectGeoJson(geojson) {
+
+// TODO: Some files (eg west wimmera garbage collection zones) *are* in 4326, but wrongly have a CRS defined.
+function reprojectGeoJson(geojson, sourceUrl) {
+    if (geojson.crs === undefined) {
+        // no CRS, hopefully it's in EPSG 4326.
+        return geojson;
+    }
+
+    if (sourceUrl === 'http://data.gov.au/geoserver/ysc-garbage-collection-zones/wfs?request=GetFeature&typeName=ckan_e7b72b97_8046_4d84_ab9f_874a549f907d&outputFormat=json' ||
+        sourceUrl === 'http://data.gov.au/geoserver/wwsc-garbage-collection-zones/wfs?request=GetFeature&typeName=ckan_e77b6c07_39f2_454d_ae72_4976cab1dfb3&outputFormat=json' ||
+        sourceUrl === 'http://data.gov.au/geoserver/hrcc-garbage-collection/wfs?request=GetFeature&typeName=ckan_55364505_b0f4_4006_8544_95c9ed8d11ad&outputFormat=json' ||
+        sourceUrl === 'http://data.gov.au/geoserver/hsc-garbage-collection-zones/wfs?request=GetFeature&typeName=ckan_4a51f8a2_90a9_4b52_8ef2_d7cecff14803&outputFormat=json'
+        ) return geojson;
     try {
 
         return reproject.toWgs84(geojson, undefined, epsg);  /* undefined = autodetect */
     } catch (e) {
-        // can't reproject? Let's pray that it's in WGS84 already?
+        console.warn(("Couldn't reproject geojson "  + e).red);
         return geojson;
+    }
+}
+
+function checkCoords(coords, source, levels) {
+    if (levels > 0) {
+        return coords.reduce((ok, coord) => ok && checkCoords(coord, source, levels - 1), true);
+    }
+
+    //console.log(coords);
+    try {
+        //if (coords[0] >= 180 || coords[0] <= -180 || coords[1] >= 90 || coords[1] <= -90) {
+        if (coords[0] >= 150 || coords[0] <= 90 || coords[1] >= -20 || coords[1] <= -45) {
+            console.log('Bad geometry '.red + source + ' ' + coords.join(',').grey);
+            return false;
+            //console.log(feature.geometry);
+        }
+    } catch(e) {
+        console.error('Really bad geometry '.red + source);
+        return false;
+        //console.log(feature.
+    }
+    return true;
+}
+
+function geometryOk(feature, source) {
+    var ok = true;
+    if (feature.geometry.type.toLowerCase() ==='multipolygon') {
+        return checkCoords(feature.geometry.coordinates, source, 3);
+    } else if (feature.geometry.type.toLowerCase() ==='polygon') {
+        return checkCoords(feature.geometry.coordinates, source, 2);
+    } else if (feature.geometry.type.toLowerCase() ==='multipoint') {
+        return checkCoords(feature.geometry.coordinates, source, 1);
+    } else {
+        return checkCoords(feature.geometry.coordinates, source, 0 );
     }
 }
 
@@ -155,8 +147,9 @@ function reprojectGeoJson(geojson) {
 function extractFeatures(geojson, orgId, topickey, sourceUrl) {
     if (geojson === undefined || geojson.features === undefined)
         return [];
-    console.log('Extracting ' + topickey.red + ' for ' + orgId.blue + ' ' + sourceUrl.cyan);
-    var features = reprojectGeoJson(geojson).features;
+    console.log('Extracting ' + topickey.green + ' for ' + orgId.blue + ' ' + sourceUrl.cyan + ' ( ' + geojson.features.length + ' features)');
+    var features = reprojectGeoJson(geojson, sourceUrl).features
+        .filter(feature => geometryOk(feature, sourceUrl));
     features.forEach((feature, index) => {
         if (feature.properties === undefined) {
             feature.properties = {};
@@ -172,7 +165,7 @@ function processGeoJson(geojson, orgId, topickey, url) {
     var features = extractFeatures(geojson, orgId, topickey, url);
     //console.log('Extracted ' + colors.green(features.length) + ' features from ' + colors.blue(resource.url) + ` for ${orgId}, ` + colors.red(topickey));
     featuresByTopic[topickey].features.push(...features);
-    console.log(featuresByTopic[topickey].features.length);
+    //console.log(featuresByTopic[topickey].features.length);
     return uploadFeatures(features, url);
 }
 
@@ -186,8 +179,8 @@ function findGeoJsonResources(datasets, orgId, topickey) {
             // for simplicity we just want the first geojson. Sometimes there are more than one, usually because something has gone wrong.
             // sometimes the format is set as 'json'. blergh.
             resources.push(d.resources.filter(r => {
-                console.log (`??? ${r.url}`);
-                return !resourceBlacklist(r.url) && (r.format.match(/geojson/i) || r.format.match(/json/i) && r.url.match(/geoserver/));
+                //console.log (`??? ${r.url}`);
+                return !resourceBlacklist(r.url) && (r.format.match(/geojson/i) || r.url.match(/geojson/i) || r.format.match(/json/i) && r.url.match(/geoserver/));
             })[0]);
         }
     });
@@ -223,7 +216,7 @@ function findSocrataDatasets(api, orgId, topickey) {
                 results.filter(item => item.metadata.geo && item.childViews && item.newBackend && titleMatchesTopic(item.name, topics[topickey])),
                 item => {
                     var url = api + '/resource/' + item.childViews[0] + '.geojson' + '?$limit=10000';
-                    console.log(orgId, topickey, url);
+                    //console.debug(orgId, topickey, url);
                     return getJson(url).then(gj => processGeoJson(gj, orgId, topickey, url));
                 }
             );
@@ -250,7 +243,7 @@ function findCkanDatasets(api, orgId, topic) {
             fq: org ? `organization:${org}` : undefined,
             rows: 1000
         }).toString();
-    console.log(uri);
+    //console.log(uri);
     return getJson(uri).then(result => {
         if (!result)
             return [];
@@ -282,8 +275,7 @@ var allPortals = getJson('https://opencouncildata.cloudant.com/councils/_design/
     //if (row.id !== 'https://data.gov.au/organization/horsham-rural-city-council') 
     //   return;
 
-    //if (!row.id.match(/hindmarsh/i)) 
-    //    return; 
+    //if (!row.id.match(/wyndham/i))  return; 
 
 
     //if (!row.id.match(/data\.gov\.au/)) 
@@ -291,7 +283,7 @@ var allPortals = getJson('https://opencouncildata.cloudant.com/councils/_design/
     //    
     
     var topickeys = Object.keys(topics);
-    topickeys = ['venues-for-hire'];
+    topickeys = ['garbage-collection-zones'];
     
     return Promise.map(topickeys, topickey => {
         if (portal.type === 'ckan') {

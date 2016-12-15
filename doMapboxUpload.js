@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 var upload=require('./upload-mapbox');
 var options = require('command-line-args')([
     { name: 'topics', type: String, multiple: true, defaultOption: true }
