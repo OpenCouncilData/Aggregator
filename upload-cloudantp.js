@@ -27,13 +27,14 @@ exports.upload = function(json, sourceurl) {
 exports.upsert = function(json, sourceurl) {
 
     var db = cloudant.use(config.cloudant.database);
+    //console.log(JSON.stringify(json).yellow);
 
     // would prefer to use fetchRevs, new in v6?
     return Promise.resolve(db.head(sourceurl))
         .then(headers => {
             json._rev = headers[1].etag.replace(/"/g, ''); // really weird, the revids are wrapped in double quotes.
-            console.log('Upserting: ' + sourceurl);
-            console.log(json._rev);
+            //console.log('Upserting: ' + sourceurl);
+            //console.log(json._rev);
         }).catch((e) => {
             // we just want to catch 404s (no existing document to replace), but we're ignoring all errors. TODO
 
@@ -43,7 +44,18 @@ exports.upsert = function(json, sourceurl) {
 
             
             json._id = sourceurl;
-
+            //console.log(json);
             return db.insert(json);
         });
 };
+
+/*
+How to do bulk upsert
+
+Can fetch all revids: https://opencouncildata.cloudant.com/test1/_design/features/_view/byTopic?limit=5&include_docs=false&reduce=false&foo=1
+
+
+Then bulk update: https://docs.cloudant.com/document.html#bulk-operations
+
+
+ */

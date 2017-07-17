@@ -25,19 +25,34 @@ TODO
 ✓ generate map styles in the browser, so Mapbox becomes a dumb host of tiles only (plus a basemap).
  ✓ style a basemap, then do Map.addLayer() with "data-polygons", "data-points", "data-lines" layer etc
 -- hence, add visualisation options like "recently updated", "number of attributes"
--- how do we set the right kind of icons for the layer? Do we need to?
+ ✓ how do we set the right kind of icons for the layer? Do we need to? ["icon" property in the front end]
+- Upload features in bulk to save money.
 
 - Add info about councils to browser, 
 -- so we can show council names, no portal URLs as ids.
 -- click on council name to jump to area
+
+- Add API endpoints to each topic in the front end
+  Geo query:
+  https://opencouncildata.cloudant.com/test1/_design/geo/_geo/dog-geo?lat=-38.17046&lon=144.35649&radius=0&include_docs=true
+
+  Other query:
+  https://opencouncildata.cloudant.com/test1/_design/features/_search/topics?q=topic:garbage-collection-zones&include_docs=true
+
+- Use better IDs for councils instead of their data portal URLs
+
+- Add a query
 
 
 - Alter pipeline to work in a "check for updates" mode. Poll each site to see if new/updated datasets?
 - Somehow deal with datasets like http://data.gov.au/geoserver/hsc-dog-walking-zones/wfs?request=GetFeature&typeName=ckan_f15a3a72_1367_4f2b_8428_416bcfc026a3&outputFormat=json 
   which are actually empty.
 
-- Use TippeCanoe to generate tilesets before uploading.
+✓ Use TippeCanoe to generate tilesets before uploading.
   rm out-mbtiles/*; tippecanoe/tippecanoe --maximum-zoom 15 --simplify-only-low-zooms -o out-mbtiles/parking-zones.mbtiles --name parking-zones --layer parking-zones out-geojsons/parking-zones.geojson
+
+- Do these warnings matter when generating mbtiles: 
+  Warning: Can't represent non-numeric feature ID "ckan_e77b6c07_39f2_454d_ae72_4976cab1dfb3.3"
 
 */
 
@@ -52,7 +67,7 @@ var _resourceBlacklist = [
 'http://data.gov.au/dataset/12bca8b6-95f0-4d17-bfbb-b7fd9f5637f7/resource/11b2042d-d93d-4702-8ee8-99d13fc4818e/download/gpsbikeparks.json'];
 function resourceBlacklist(uri) {
     if (_resourceBlacklist.indexOf(uri) !== -1) {
-        console.log('BLACKLIST '.red + uri);
+        log.medium('BLACKLIST '.red + uri);
         return true;
     }
     return false;
@@ -73,21 +88,24 @@ Object.keys(topics).forEach(topickey => featuresByTopic[topickey] = {
 const getJson = require('./jsonCache').getJsonViaCache;
 
 // Split a GeoJson file into features and upload them separately to CloudAnt, with ID like "http://data.gov.au/...geojson#4"
-function uploadFeatures(features, sourceUrl) {
-    return;
+function uploadFeatures(features) {
+    //return;
     if (features === undefined) // some broken GeoJson files?
         return;
-
+    var uploadCount = 0;
     return Promise.map(features, (feature, index) => {
-        var id = sourceUrl + '#' + index;  // TODO fix this. We're filtering out bad layers, so this messes with counting?
+        var id = feature.properties.sourceUrl + '#' + index;  // TODO fix this. We're filtering out bad layers, so this messes with counting?
         return uploadCloudant.upsert(feature, id)
-        .then(() => console.log('Uploaded ' + id))
+        .then(() => uploadCount++)
+
+        .then(() => log.low('Uploaded ' + id))
         .catch(e => {
             if (e.reason === 'Document update conflict.')
                 1;//return; // We will need to handle updating datasets later on.
             console.error(`** ${e} (${id})`);
         });
-    });
+        
+    }).finally(() => log.high(`${uploadCount} features uploaded.`));
 }
 
 // Not all GeoJSON files are in the recommended WGS84/latlon/EPSG:4326 projection.
@@ -109,7 +127,7 @@ function reprojectGeoJson(geojson, sourceUrl) {
 
         return reproject.toWgs84(geojson, undefined, epsg);  /* undefined = autodetect */
     } catch (e) {
-        console.warn(("Couldn't reproject geojson "  + e).red);
+        log.warn("Couldn't reproject geojson "  + e);
         return geojson;
     }
 }
@@ -118,47 +136,57 @@ function checkCoords(coords, source, levels) {
     if (levels > 0) {
         return coords.reduce((ok, coord) => ok && checkCoords(coord, source, levels - 1), true);
     }
-
-    //console.log(coords);
     try {
-        //if (coords[0] >= 180 || coords[0] <= -180 || coords[1] >= 90 || coords[1] <= -90) {
         if (coords[0] >= 160 || coords[0] <= 90 || coords[1] >= -5 || coords[1] <= -50) {
-            console.log('Bad geometry '.red + source + ' ' + coords.join(',').grey);
+            log.warn('Bad geometry '.red + source + ' ' + coords.join(',').grey);
             return false;
-            //console.log(feature.geometry);
         }
     } catch(e) {
-        console.error('Really bad geometry '.red + source);
+        // Ie, coords isn't even an array of 4 elements.
+        log.warn('Really bad geometry '.red + source);
         return false;
-        //console.log(feature.
     }
     return true;
 }
 
 function geometryOk(feature, source) {
-    var ok = true;
-    if (feature.geometry.type.toLowerCase() ==='multipolygon') {
-        return checkCoords(feature.geometry.coordinates, source, 3);
-    } else if (feature.geometry.type.toLowerCase() ==='polygon') {
-        return checkCoords(feature.geometry.coordinates, source, 2);
-    } else if (feature.geometry.type.toLowerCase() ==='multipoint') {
-        return checkCoords(feature.geometry.coordinates, source, 1);
+    if (!feature || !feature.geometry || !feature.geometry.type || !feature.geometry.coordinates) {
+        return false
+    }
+    var ok = true, 
+        gtype = feature.geometry.type.toLowerCase(), 
+        coords = feature.geometry.coordinates;
+    if (gtype ==='multipolygon') {
+        return checkCoords(coords, source, 3);
+    } else if (gtype ==='polygon') {
+        return checkCoords(coords, source, 2);
+    } else if (gtype ==='multipoint') {
+        return checkCoords(coords, source, 1);
     } else {
-        return checkCoords(feature.geometry.coordinates, source, 0 );
+        return checkCoords(coords, source, 0 );
     }
 }
 
 // Process a GeoJson file, adding properties, then return features.
-function extractFeatures(geojson, orgId, topickey, sourceUrl) {
+function extractFeatures(geojson, orgId, topickey, sourceUrl, datasetTitle) {
     if (geojson === undefined || geojson.features === undefined)
         return [];
-    console.log('Extracting ' + topickey.green + ' for ' + orgId.blue + ' ' + sourceUrl.cyan + ' ( ' + geojson.features.length + ' features)');
+    log.medium('Extracting ' + (datasetTitle ? ` ${datasetTitle.blue} ` : '') + `"${topickey.yellow}"` + ' for ' + orgId.replace(/.*\//,'').blue + ' ' + sourceUrl.cyan + ' ( ' + geojson.features.length + ' features)');
     var features = reprojectGeoJson(geojson, sourceUrl).features
         .filter(feature => geometryOk(feature, sourceUrl));
     features.forEach((feature, index) => {
         if (feature.properties === undefined) {
             feature.properties = {};
+        } else {
+            // force property keys to lower case.
+            Object.keys(feature.properties).forEach(prop => {
+                if (prop !== prop.toLowerCase()) {
+                    feature.properties[prop.toLowerCase()] = feature.properties[prop];
+                    delete feature.properties[prop];
+                }
+            });
         }
+
         feature.properties.sourceCouncilId = orgId;
         feature.properties.openCouncilDataTopic = topickey;
         feature.properties.sourceUrl = sourceUrl;
@@ -166,12 +194,13 @@ function extractFeatures(geojson, orgId, topickey, sourceUrl) {
     return features;
 }
 
-function processGeoJson(geojson, orgId, topickey, url) {
-    var features = extractFeatures(geojson, orgId, topickey, url);
-    //console.log('Extracted ' + colors.green(features.length) + ' features from ' + colors.blue(resource.url) + ` for ${orgId}, ` + colors.red(topickey));
+function processGeoJson(geojson, orgId, topickey, url, datasetTitle) {
+    var features = extractFeatures(geojson, orgId, topickey, url, datasetTitle);
+    //log.low('Extracted ' + colors.green(features.length) + ' features from ' + colors.blue(resource.url) + ` for ${orgId}, ` + colors.red(topickey));
     featuresByTopic[topickey].features.push(...features);
     //console.log(featuresByTopic[topickey].features.length);
-    return uploadFeatures(features, url);
+    return features;
+    //return uploadFeatures(features, url);
 }
 
 // Return list of GeoJSON resources within a set of CKAN datasets.
@@ -179,21 +208,29 @@ function findGeoJsonResources(datasets, orgId, topickey) {
     var resources = [];
     //console.log(datasets);
     datasets.forEach(d => {
-        if (d.resources) { 
+        if (d.resources) {
+            
             //console.log(d.resources);
-            // for simplicity we just want the first geojson. Sometimes there are more than one, usually because something has gone wrong.
-            // sometimes the format is set as 'json'. blergh.
-            resources.push(d.resources.filter(r => {
+            var gjResources = d.resources.filter(r => {
                 //console.log (`??? ${r.url}`);
-                return !resourceBlacklist(r.url) && (r.format.match(/geojson/i) || r.url.match(/geojson/i) || r.format.match(/json/i) && r.url.match(/geoserver/));
-            })[0]);
+                return !resourceBlacklist(r.url) && 
+                    (r.format.match(/geojson/i) || 
+                     r.url.match(/geojson/i) || 
+                     r.format.match(/json/i) && r.url.match(/geoserver/));
+            });
+            if (gjResources.length >= 1) {
+                gjResources[0].datasetTitle = d.title;                
+                resources.push(gjResources[0]); // If there is more than one matching resource, usually something has gone wrong. Let's ignore that fact.
+            }
         }
     });
-    resources = resources.filter(r => r !== undefined);
+    // remove datasets with no matching resources
+    //resources = resources.filter(r => r !== undefined);
     //console.log(resources);
     return Promise.map(resources, resource => 
         getJson(resource.url)
-        .then(gj => processGeoJson(gj, orgId, topickey, resource.url))
+        .then(gj => processGeoJson(gj, orgId, topickey, resource.url, resource.datasetTitle))
+        .then(features => options.cloudant ? uploadFeatures(features) : undefined)
     );
 
 }
@@ -241,7 +278,7 @@ function findSocrataDatasets(api, orgId, topickey) {
 
 }
 
-// Return list of all datasets for an organisation that match a specific topic.
+// Return list of all datasets for an organisation that match a specific topic, in native CKAN format.
 function findCkanDatasets(api, orgId, topic) {
     var org = orgId.match('organization') ? orgId.replace(/.*organization\//, '') : '';
     var uri = new URI(api + 'action/package_search').query({
@@ -249,13 +286,19 @@ function findCkanDatasets(api, orgId, topic) {
             fq: org ? `organization:${org}` : undefined,
             rows: 1000
         }).toString();
-    //console.log(uri);
+    log.low(uri);
+
     return getJson(uri).then(result => {
         if (!result)
             return [];
         return result.result.results.filter(dataset => {
             //console.log(dataset.url);
-            if (!orgId.match(dataset.organization.name))
+            
+            if (!dataset.organization) {
+                //log.low(`No organisation for ${dataset.title}, ${dataset.url}`);
+                // Seems to be a problem with datasets that have no orgs getting federated to data.sa.gov.au and matching searches there
+                return false
+            } else if (!orgId.match(dataset.organization.name))
                 return false; // annoying test to filter out federated results
             return titleMatchesTopic(dataset.title, topic);
         });
@@ -267,24 +310,29 @@ function writeCombinedGeoJsons() {
     const fs = require('fs');
     Object.keys(featuresByTopic).forEach(topickey => {
         if (featuresByTopic[topickey].features.length > 0) {
-            console.log('Writing ' + topickey);
+            log.high('Writing ' + topickey);
             fs.writeFile(`out-geojsons/${topickey}.geojson`, JSON.stringify(featuresByTopic[topickey]));
         }
     });
 }
-
+/*
+  Download and process all possible datasets for each topic.
+*/
 function processTopics(topickeys) {
-    return getJson('https://opencouncildata.cloudant.com/councils/_design/platforms/_view/all?reduce=false')
-        .then(result => Promise.map(result.rows, (row) => {
-        //console.log(row.id);
-        var portal = row.key;
+    // don't cache this list
+    return getJson('https://opencouncildata.cloudant.com/councils/_design/platforms/_view/all?reduce=false', true)
+        .then(result => { log.low(result.rows.map(row => row.key.title).join(',')); return result; })
+        .then(result => Promise.map(result.rows, (council) => {
+        //console.log(council.id);
+        var portal = council.key;
+
 
         //if (row.id !== 'https://data.gov.au/organization/horsham-rural-city-council') 
         //   return;
 
-        //if (!row.id.match(/melbourne/i))  return; 
+        //if (!portal.title.match(/geelong/i))  return; 
 
-
+        //console.log(row.id);
         //if (!row.id.match(/data\.gov\.au/)) 
         //    return; 
         //    
@@ -294,22 +342,25 @@ function processTopics(topickeys) {
         
         return Promise.map(topickeys, topickey => {
             if (topics[topickey] === undefined) {
-                console.error('Unknown topic: ' + topickey);
-                return;
+                return void log.error('Unknown topic: ' + topickey);
             }
             if (portal.type === 'ckan') {
-                return findCkanDatasets(portal.api, row.id, topics[topickey])
-                    .then(datasets => findGeoJsonResources(datasets, row.id, topickey));
+                return findCkanDatasets(portal.api, council.id, topics[topickey])
+                    .then(datasets => findGeoJsonResources(datasets, council.id, topickey));
             } else if (portal.type === 'socrata' && !portal.api.match( /act\.gov\.au/)) {
-                return findSocrataDatasets(portal.api, row.id, topickey);
+                return findSocrataDatasets(portal.api, council.id, topickey);
             }
         });
     })).then(writeCombinedGeoJsons);
 }
 
 var options = require('command-line-args')([
-    { name: 'topics', type: String, multiple: true, defaultOption: true }
+    { name: 'topics', type: String, multiple: true, defaultOption: true },
+    { name: 'lowcache', type: Boolean },
+    { name: 'loglevel', type: Number },
+    { name: 'cloudant', type: Boolean, defaultOption: false }
 ]);
+var log = require('./log')(options.loglevel);
 
 if (!options.topics) {
     // options.topics = Object.keys(topics);

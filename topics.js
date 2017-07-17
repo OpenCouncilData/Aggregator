@@ -7,7 +7,7 @@ module.exports = {
     'garbage-collection-zones': {
         // note: this is the correct syntax for searching two alternative phrases. Everything else is wrong.
         searchTerm: '+title:"garbage collection" OR +title:"waste collection"',
-        titleBlacklist: /bins|stats|trucks|routes/i,
+        titleBlacklist: /bins|stats|trucks|routes|points/i,
         titleWhitelist: /waste|garbage|recycling|rubbish/i
     },
     'public-toilets': {
@@ -38,7 +38,7 @@ module.exports = {
     'parks': {
         searchTerm: '+title:parks OR +title:"open space"',
         titleWhitelist: /park|open space/i,
-        titleBlacklist: /parking|carpark|trees/i
+        titleBlacklist: /parking|carpark|trees|shelters|playground|dog|caravan|track/i
     },
     'trees': {
         searchTerm: 'trees',
@@ -62,5 +62,9 @@ module.exports = {
         searchTerm: 'wards',
         titleWhitelist: /wards/i,
         titleBlacklist: /register|bridges|councillors/i
+    },
+    'road-closures': {
+        searchTerm: 'road closures',
+        titleWhitelist: /road closure/i
     }
 };

@@ -36,14 +36,17 @@ function cacheJson(json, source) {
 }
 
 function getActualJson(uri) {
-    console.log('===> ' + uri);
+    //console.log('===> ' + uri);
     return requestp({ uri: uri, json: true })
     .catch(error => console.error("** Couldn't fetch ".red + uri.red))/*console.error(error))*/;
 }
 
 
-exports.getJsonViaCache = function(source) {
-    return getCache()
+exports.getJsonViaCache = function(source, skipCache) {
+    if (skipCache)
+        return getActualJson(source)
+            .then(j => cacheJson(j, source).return(j));
+    else return getCache()
         .then(cache => fsp.readFileAsync(`${cacheDir}${cache.files[source]}.json`))
         .then(contents => { 
             //console.log('Cache hit ' + source + ']' ); 
