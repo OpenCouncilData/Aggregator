@@ -31,9 +31,9 @@ module.exports = {
         //titleBlacklist: /
     },
     'drainpipes': {
-        searchTerm: 'drains',
+        searchTerm: '+title:"drains" OR +title:"drainpipes" OR +title:"stormwater" OR +title:"drainage"',
         titleWhitelist: /drain/i,
-        titleBlacklist: /basin|pit|catchment/i
+        titleBlacklist: /basin|pit|catchment|overlay|node|connection/i
     },
     'parks': {
         searchTerm: '+title:parks OR +title:"open space"',
@@ -66,5 +66,14 @@ module.exports = {
     'road-closures': {
         searchTerm: 'road closures',
         titleWhitelist: /road closure/i
+    },
+    'property-boundaries': {
+        searchTerm: 'property boundaries',
+        titleWhitelist: /propert|cadastr/i
+    },
+    'street-furniture': {
+        searchTerm: '+title:"furniture" OR +title:"bbq"',
+        //titleBlacklist: /bins|stats|trucks|routes|points/i,
+        titleWhitelist: /furniture|bbq/i
     }
 };
