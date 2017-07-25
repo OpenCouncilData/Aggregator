@@ -330,33 +330,19 @@ function processTopics(topickeys) {
     return getJson('https://opencouncildata.cloudant.com/councils/_design/platforms/_view/all?reduce=false', true)
         .then(result => { log.low(result.rows.map(row => row.key.title).join(',')); return result; })
         .then(result => Promise.map(result.rows, (council) => {
-        //console.log(council.id);
-        var portal = council.key;
-
-
-        //if (row.id !== 'https://data.gov.au/organization/horsham-rural-city-council') 
-        //   return;
-
-        //if (!portal.title.match(/geelong/i))  return; 
-
-        //console.log(row.id);
-        //if (!row.id.match(/data\.gov\.au/)) 
-        //    return; 
-        //    
+            //console.log(council.id);
+            var portal = council.key;
         
-        
-        //topickeys = ['wards'];
-        
-        return Promise.map(topickeys, topickey => {
-            if (topics[topickey] === undefined) {
-                return void log.error('Unknown topic: ' + topickey);
-            }
-            if (portal.type === 'ckan') {
-                return findCkanDatasets(portal.api, council.id, topics[topickey])
-                    .then(datasets => findGeoJsonResources(datasets, council.id, topickey));
-            } else if (portal.type === 'socrata' && !portal.api.match( /act\.gov\.au/)) {
-                return findSocrataDatasets(portal.api, council.id, topickey);
-            }
+            return Promise.map(topickeys, topickey => {
+                if (topics[topickey] === undefined) {
+                    return void log.error('Unknown topic: ' + topickey);
+                }
+                if (portal.type === 'ckan') {
+                    return findCkanDatasets(portal.api, council.id, topics[topickey])
+                        .then(datasets => findGeoJsonResources(datasets, council.id, topickey));
+                } else if (portal.type === 'socrata' && !portal.api.match( /act\.gov\.au/)) {
+                    return findSocrataDatasets(portal.api, council.id, topickey);
+                }
         });
     })).then(writeCombinedGeoJsons);
 }
