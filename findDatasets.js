@@ -1,3 +1,4 @@
+#!/usr/bin/env node --max-old-space-size=8192
 /*
 
 Out of memory? node --max-old-space-size=8192 findDatasets.js 
@@ -88,7 +89,7 @@ Object.keys(topics).forEach(topickey => featuresByTopic[topickey] = {
 const getJson = require('./jsonCache').getJsonViaCache;
 
 // Split a GeoJson file into features and upload them separately to CloudAnt, with ID like "http://data.gov.au/...geojson#4"
-function uploadFeatures(features) {
+function uploadFeatures(features, orgId) {
     //return;
     if (features === undefined) // some broken GeoJson files?
         return;
@@ -105,7 +106,7 @@ function uploadFeatures(features) {
             console.error(`** ${e} (${id})`);
         });
         
-    }).finally(() => log.high(`${uploadCount} features uploaded.`));
+    }).finally(() => log.high(`${uploadCount} features uploaded for ${orgId}.`));
 }
 
 // Not all GeoJSON files are in the recommended WGS84/latlon/EPSG:4326 projection.
@@ -195,9 +196,14 @@ function extractFeatures(geojson, orgId, topickey, sourceUrl, datasetTitle) {
 }
 
 function processGeoJson(geojson, orgId, topickey, url, datasetTitle) {
+
     var features = extractFeatures(geojson, orgId, topickey, url, datasetTitle);
-    //log.low('Extracted ' + colors.green(features.length) + ' features from ' + colors.blue(resource.url) + ` for ${orgId}, ` + colors.red(topickey));
-    featuresByTopic[topickey].features.push(...features);
+    log.low('Extracted ' + colors.green(features.length) + ' features from ' + colors.blue(url) + ` for ${orgId}, ` + colors.red(topickey));
+    //featuresByTopic[topickey].features.push(...features); // doesn't work if very many features
+    featuresByTopic[topickey].features = featuresByTopic[topickey].features.concat(features);
+    featuresByTopic[topickey].features.forEach((feature, i) =>
+        feature.id = i); // I have no idea what the implications of this are. Just trying to avoid the Tippecanoe warning.
+        //feature.id = String(feature.id).replace(/[^0-9]/g, ''));
     //console.log(featuresByTopic[topickey].features.length);
     return features;
     //return uploadFeatures(features, url);
@@ -230,7 +236,7 @@ function findGeoJsonResources(datasets, orgId, topickey) {
     return Promise.map(resources, resource => 
         getJson(resource.url)
         .then(gj => processGeoJson(gj, orgId, topickey, resource.url, resource.datasetTitle))
-        .then(features => options.cloudant ? uploadFeatures(features) : undefined)
+        .then(features => options.cloudant ? uploadFeatures(features, orgId) : undefined)
     );
 
 }
@@ -260,7 +266,8 @@ function findSocrataDatasets(api, orgId, topickey) {
                 item => {
                     var url = api + '/resource/' + item.childViews[0] + '.geojson' + '?$limit=50000';
                     //console.debug(orgId, topickey, url);
-                    return getJson(url).then(gj => processGeoJson(gj, orgId, topickey, url));
+                    return getJson(url)
+                        .then(gj => processGeoJson(gj, orgId, topickey, url)); // TODO Upload to Cloudant!
                 }
             );
         });
