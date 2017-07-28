@@ -263,8 +263,8 @@ function findGeoJsonResources(datasets, orgId, topickey) {
 
 function titleMatchesTopic(title, topic) {
     //console.log(title);
-    return !(topic.titleBlacklist && title.match(topic.titleBlacklist)) && 
-           !(topic.titleWhitelist && !title.match(topic.titleWhitelist));
+    return !(topic.titleBlacklist && title.match(topic.titleBlacklist) && !(void log.verylow(`${title} fails title blacklist ${topic.titleBlacklist}`))) && 
+           !(topic.titleWhitelist && !title.match(topic.titleWhitelist) && !(void log.verylow(`${title} fails title whitelist ${topic.titleWhitelist}`)));
 }
 
 /* Grrr. We can't use this dataset: https://data.melbourne.vic.gov.au/Assets-Infrastructure/Public-Toilets/ru3z-44we
@@ -325,7 +325,7 @@ function findCkanDatasets(api, orgId, topic) {
             if (!dataset.organization) {
                 //log.low(`No organisation for ${dataset.title}, ${dataset.url}`);
                 // Seems to be a problem with datasets that have no orgs getting federated to data.sa.gov.au and matching searches there
-                return false
+                return false;
             } else if (!orgId.match(dataset.organization.name))
                 return false; // annoying test to filter out federated results
             return titleMatchesTopic(dataset.title, topic);
@@ -374,7 +374,8 @@ function closeOutputGeoJson(topickey) {
 function processTopics(topickeys) {
     // don't cache this list
     return getJson('https://opencouncildata.cloudant.com/councils/_design/platforms/_view/all?reduce=false', true)
-        .then(result => { log.low(result.rows.map(row => row.key.title).join(',')); return result; })
+        //.then(result => { log.low(result.rows.map(row => row.key.title).join(',')); return result; })
+        .tap(result => log.low(result.rows.map(row => row.key.title).join(',')))
         .then(result => Promise.map(result.rows, (council) => {
             //console.log(council.id);
             var portal = council.key;
