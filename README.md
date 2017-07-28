@@ -28,8 +28,7 @@ This does the following:
 This does:
 
 1. Take the generated combined GeoJSON file and use TippeCanoe to generate an MBTiles file.
-
-
+2. Uploads it to Mapbox.
 
 ### Topics
 
