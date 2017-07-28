@@ -43,13 +43,13 @@ function getActualJson(uri) {
 
 
 exports.getJsonViaCache = function(source, skipCache) {
-    if (skipCache)
+    if (skipCache || source.match(/package_search/))
         return getActualJson(source)
             .then(j => cacheJson(j, source).return(j));
     else return getCache()
         .then(cache => fsp.readFileAsync(`${cacheDir}${cache.files[source]}.json`))
         .then(contents => { 
-            //console.log('Cache hit ' + source + ']' ); 
+            //console.log(`Cache hit ${cache.files[source]} = ${source}` ); 
             return JSON.parse(contents); } )
         .catch(e => { 
             //console.log('[Cache miss ' + source + ']'); 
