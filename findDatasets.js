@@ -378,6 +378,12 @@ function processTopics(topickeys) {
         .then(result => Promise.map(result.rows, (council) => {
             //console.log(council.id);
             var portal = council.key;
+
+
+            if (options.council && !council.key.title.match(options.council)) {
+                //log.low(`Skipping ${council.key.title}`);
+                return;
+            }
         
             return Promise.map(topickeys, topickey => {
                 var stream = createOutputGeoJson(topickey);
@@ -386,6 +392,7 @@ function processTopics(topickeys) {
                 }
                 if (portal.type === 'ckan') {
                     return findCkanDatasets(portal.api, council.id, topics[topickey])
+                        .tap(datasets => log.low(`Got ${datasets.length} datasets.`))
                         .then(datasets => findGeoJsonResources(datasets, council.id, topickey));
                 } else if (portal.type === 'socrata' && !portal.api.match( /act\.gov\.au/)) {
                     return findSocrataDatasets(portal.api, council.id, topickey);
@@ -401,6 +408,7 @@ var options = require('command-line-args')([
     { name: 'topics', type: String, multiple: true, defaultOption: true },
     { name: 'lowcache', type: Boolean },
     { name: 'loglevel', type: Number },
+    { name: 'council', type: String},
     { name: 'cloudant', type: Boolean, defaultOption: false }
 ]);
 var log = require('./log')(options.loglevel);
