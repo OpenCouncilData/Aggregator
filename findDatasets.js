@@ -14,7 +14,7 @@ var uploadCloudant = require('./upload-cloudantp');
 var epsg = require('epsg');
 var reproject = require('reproject');
 var colors = require('colors');
-
+var fs = require('fs');
 /* jshint esnext:true */
 
 /* 
@@ -106,7 +106,8 @@ function uploadFeatures(features, orgId) {
             console.error(`** ${e} (${id})`);
         });
         
-    }).finally(() => log.high(`${uploadCount} features uploaded for ${orgId}.`));
+    }, { concurrency: 500 } // Limit the number of features uploaded at once to Cloudant. Otherwise it consumes thousands of file descriptors and your system crashes.
+    ).finally(() => log.high(`${uploadCount} features uploaded for ${orgId}.`));
 }
 
 // Not all GeoJSON files are in the recommended WGS84/latlon/EPSG:4326 projection.
@@ -195,14 +196,33 @@ function extractFeatures(geojson, orgId, topickey, sourceUrl, datasetTitle) {
     return features;
 }
 
+
+var writeStreams = {}; 
+
+function storeFeatures(topickey, features) {
+    // old
+    featuresByTopic[topickey].features = featuresByTopic[topickey].features.concat(features);
+
+    features.forEach(feature => {
+        if (writeStreams[topickey].__doneFirst) {
+            writeStreams[topickey].write(options.trueGeoJson ? ',\n' : '\n');
+        } else {
+            writeStreams[topickey].__doneFirst = true;
+        }
+        writeStreams[topickey].write(JSON.stringify(feature)); //???
+
+    });
+
+}
+
 function processGeoJson(geojson, orgId, topickey, url, datasetTitle) {
 
     var features = extractFeatures(geojson, orgId, topickey, url, datasetTitle);
+    features.forEach((feature, i) => feature.id = i); // I have no idea what the implications of this are. Just trying to avoid the Tippecanoe warning.
+
     log.low('Extracted ' + colors.green(features.length) + ' features from ' + colors.blue(url) + ` for ${orgId}, ` + colors.red(topickey));
     //featuresByTopic[topickey].features.push(...features); // doesn't work if very many features
-    featuresByTopic[topickey].features = featuresByTopic[topickey].features.concat(features);
-    featuresByTopic[topickey].features.forEach((feature, i) =>
-        feature.id = i); // I have no idea what the implications of this are. Just trying to avoid the Tippecanoe warning.
+    storeFeatures(topickey, features);
         //feature.id = String(feature.id).replace(/[^0-9]/g, ''));
     //console.log(featuresByTopic[topickey].features.length);
     return features;
@@ -267,7 +287,8 @@ function findSocrataDatasets(api, orgId, topickey) {
                     var url = api + '/resource/' + item.childViews[0] + '.geojson' + '?$limit=50000';
                     //console.debug(orgId, topickey, url);
                     return getJson(url)
-                        .then(gj => processGeoJson(gj, orgId, topickey, url)); // TODO Upload to Cloudant!
+                        .then(gj => processGeoJson(gj, orgId, topickey, url)) // TODO Upload to Cloudant!
+                        .then(features => options.cloudant ? uploadFeatures(features, orgId) : undefined);
                 }
             );
         });
@@ -322,6 +343,31 @@ function writeCombinedGeoJsons() {
         }
     });
 }
+
+function createOutputGeoJson(topickey) {
+    writeStreams[topickey] = fs.createWriteStream(`./out-geojsons/${topickey}.geojson`);
+    var stream = writeStreams[topickey];
+
+
+    stream.on('error', function (err) {
+        console.log(err);
+    });
+
+    if (options.trueGeoJson) { // If not "true GeoJSON" we write this abbreviated form which is better for Tippecanoe
+        stream.write('{"type": "FeatureCollection", "features": [\n');
+    }
+    return stream;
+}
+
+function closeOutputGeoJson(topickey) {
+    if (writeStreams[topickey]) {
+        if (options.trueGeoJson) {
+            writeStreams[topickey].write('\n]}');
+        }
+        writeStreams[topickey].end();
+    }
+}
+
 /*
   Download and process all possible datasets for each topic.
 */
@@ -334,6 +380,7 @@ function processTopics(topickeys) {
             var portal = council.key;
         
             return Promise.map(topickeys, topickey => {
+                var stream = createOutputGeoJson(topickey);
                 if (topics[topickey] === undefined) {
                     return void log.error('Unknown topic: ' + topickey);
                 }
@@ -343,8 +390,11 @@ function processTopics(topickeys) {
                 } else if (portal.type === 'socrata' && !portal.api.match( /act\.gov\.au/)) {
                     return findSocrataDatasets(portal.api, council.id, topickey);
                 }
-        });
-    })).then(writeCombinedGeoJsons);
+            });
+    }//, {//concurrency: 1}
+    )).then(() => topickeys.forEach(closeOutputGeoJson));
+
+    //.then(writeCombinedGeoJsons);
 }
 
 var options = require('command-line-args')([
