@@ -267,24 +267,30 @@ function titleMatchesTopic(title, topic) {
            !(topic.titleWhitelist && !title.match(topic.titleWhitelist) && !(void log.verylow(`${title} fails title whitelist ${topic.titleWhitelist}`)));
 }
 
-/* Grrr. We can't use this dataset: https://data.melbourne.vic.gov.au/Assets-Infrastructure/Public-Toilets/ru3z-44we
-But this geojson view of it exists: https://data.melbourne.vic.gov.au/resource/dsec-5y6t.geojson
-But I can't find any link that takes us from A to  B.
-
-Maybe use this horrible format: https://data.melbourne.vic.gov.au/api/views/ru3z-44we/rows.json
-and convert to GeoJSON.
-
-
-*/
 
 function findSocrataDatasets(api, orgId, topickey) {
+
+    /* Grrr. We can't use this dataset: https://data.melbourne.vic.gov.au/Assets-Infrastructure/Public-Toilets/ru3z-44we
+    But this geojson view of it exists: https://data.melbourne.vic.gov.au/resource/dsec-5y6t.geojson
+    But I can't find any link that takes us from A to  B.
+
+    Maybe use this horrible format: https://data.melbourne.vic.gov.au/api/views/ru3z-44we/rows.json
+    and convert to GeoJSON.
+
+    TODO unkludge this!
+    */
+    var geojsons = {
+        'ru3z-44we': 'dsec-5y6t',
+        '8fgn-5q6t':'w4fc-iq27'
+    }
+
     return getJson(api + '/api/views.json')
         .then(results => { 
             //console.log(results[1]);
             return Promise.map(
-                results.filter(item => item.metadata.geo && item.childViews && item.newBackend && titleMatchesTopic(item.name, topics[topickey])),
+                results.filter(item => (geojsons[item.id] || item.metadata.geo && item.childViews && item.newBackend) && titleMatchesTopic(item.name, topics[topickey])),
                 item => {
-                    var url = api + '/resource/' + item.childViews[0] + '.geojson' + '?$limit=50000';
+                    var url = api + '/resource/' + (geojsons[item.id] || item.childViews[0]) + '.geojson' + '?$limit=50000';
                     //console.debug(orgId, topickey, url);
                     return getJson(url)
                         .then(gj => processGeoJson(gj, orgId, topickey, url)) // TODO Upload to Cloudant!
@@ -319,8 +325,10 @@ function findCkanDatasets(api, orgId, topic) {
     return getJson(uri).then(result => {
         if (!result)
             return [];
+        //log.low(JSON.stringify(result));
         return result.result.results.filter(dataset => {
             //console.log(dataset.url);
+        
             
             if (!dataset.organization) {
                 //log.low(`No organisation for ${dataset.title}, ${dataset.url}`);
@@ -378,6 +386,7 @@ function processTopics(topickeys) {
         .tap(result => log.low(result.rows.map(row => row.key.title).join(',')))
         .then(result => Promise.map(result.rows, (council) => {
             //console.log(council.id);
+
             var portal = council.key;
 
 
