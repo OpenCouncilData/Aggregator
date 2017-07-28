@@ -17,6 +17,11 @@ module.exports.debug = function(message) {
         console.log(colors.dim.italic(message));
 };
 
+module.exports.verylow = function(message) {
+    if (loglevel <= 0)
+        console.log(colors.grey(message));
+};
+
 
 module.exports.low = function(message) {
     if (loglevel <= 1)

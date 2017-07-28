@@ -1,11 +1,12 @@
 module.exports = {
     'dog-walking-zones': {
-        searchTerm: 'dog walking zones',
+        searchTerm: '+title:"dog walking" OR +title:"dog off"',
         titleWhitelist: /dog/i,
         titleBlacklist: /bag/i
     },
     'garbage-collection-zones': {
         // note: this is the correct syntax for searching two alternative phrases. Everything else is wrong.
+        // TODO: Allow an array of strings, and just run several queries.
         searchTerm: '+title:"garbage collection" OR +title:"waste collection"',
         titleBlacklist: /bins|stats|trucks|routes|points/i,
         titleWhitelist: /waste|garbage|recycling|rubbish/i
@@ -32,8 +33,8 @@ module.exports = {
     },
     'drainpipes': {
         searchTerm: '+title:"drains" OR +title:"drainpipes" OR +title:"stormwater" OR +title:"drainage"',
-        titleWhitelist: /drain/i,
-        titleBlacklist: /basin|pit|catchment|overlay|node|connection/i
+        titleWhitelist: /drain|stormwater|pipe/i,
+        titleBlacklist: /basin|pit|catchment|overlay|node|connection|areas|future|planning|points/i
     },
     'parks': {
         searchTerm: '+title:parks OR +title:"open space"',
@@ -46,13 +47,13 @@ module.exports = {
         titleBlacklist: /species|flora|catalogue|pit/i
     },
     'facilities': {
-        searchTerm: 'facilities',
-        titleBlacklist: /parks/i,
-        titleWhitelist: /facilities/i
+        searchTerm: '+title:"facilities" OR "libraries" OR +"community centres"',
+        titleBlacklist: /parks|proposed/i,
+        titleWhitelist: /facilities|librar|community centre/i
     },
     'childcare-centres': {
-        searchTerm: 'childcare centres',
-        titleWhitelist: /child.?care/i
+        searchTerm: '+title:"childcare" OR +title:"child care" OR +title:"kindergarten"',
+        titleWhitelist: /child.?care|kindergarten/i
     },
     'venues-for-hire': {
         searchTerm: '+title:venues OR +title:halls',
